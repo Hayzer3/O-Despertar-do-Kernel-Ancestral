@@ -1,9 +1,24 @@
 import streamlit as st
 import oracledb
 import os
+import sys
 from dotenv import load_dotenv
 import streamlit.components.v1 as components
+from streamlit.web.cli import main
 
+def run_app():
+    load_dotenv()
+
+if __name__ == "__main__":
+
+    sys.argv = [
+        "streamlit",
+        "run",
+        "api/index.py",
+        "--server.port", "8501",
+        "--server.address", "0.0.0.0"
+    ]
+    main()
 
 load_dotenv()
 
