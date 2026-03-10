@@ -53,6 +53,19 @@ st.markdown("*Uma nevoa venenosa drena a vida de todos os herois...*")
 if st.button("Proximo Turno", type="primary"):
     processar_turno()
 
+with st.sidebar:
+    st.header("Painel do Mestre")
+    if st.button("Resetar Vida (Cura Total)"):
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE TB_HEROIS SET hp_atual = hp_max, status = 'ATIVO'")
+                    conn.commit()
+                    st.success("os heróis foram curados!")
+                    st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao resetar: {e}")
+
 
 try:
     with get_db_connection() as conn:
@@ -73,8 +86,7 @@ try:
                 <tr>
                     <th>ID</th><th>Nome</th><th>Classe</th><th>HP</th><th>Barra HP</th><th>Status</th>
                 </tr>
-            """
-
+            """ 
             for h in herois:
                 pct = (h[3]/h[4]) * 100
                 cor_barra = "#4caf50" if pct > 50 else "#ffeb3b" if pct > 20 else "#f44336"
