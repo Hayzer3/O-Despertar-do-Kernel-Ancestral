@@ -1,139 +1,82 @@
-import streamlit as st
+from flask import Flask, render_template_string, request, redirect, url_for
 import oracledb
 import os
-import sys
 from dotenv import load_dotenv
-import streamlit.components.v1 as components
-from streamlit.web.cli import main
-
-def run_app():
-    load_dotenv()
-
-if __name__ == "__main__":
-
-    sys.argv = [
-        "streamlit",
-        "run",
-        "api/index.py",
-        "--server.port", "8501",
-        "--server.address", "0.0.0.0"
-    ]
-    main()
 
 load_dotenv()
+app = Flask(__name__)
 
-st.set_page_config(page_title="SQLgard - RPG Engine", layout="centered")
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head><title>SQLgard</title>
+<style>
+    body{background:#0e1117;color:#c9d1d9;font-family:sans-serif;text-align:center}
+    h1{color:white}
+    button{padding:10px 20px;font-weight:bold;border:none;border-radius:5px;margin:5px;cursor:pointer}
+    .turno{background:white;color:black}
+    .reset{background:#4caf50;color:white}
+    table{width:85%;margin:20px auto;background:#161b22;border-collapse:collapse}
+    th{background:#21262d;padding:10px}
+    td{padding:10px;border-bottom:1px solid #30363d}
+    .caido{color:#ff4b4b}
+    .barra{background:#333;width:100px;height:10px;border-radius:5px}
+    .fill{height:100%;border-radius:5px}
+</style>
+</head>
+<body>
+    <h1> SQLgard</h1>
+    <h2> Uma nevoa venenosa drena a vida de todos os herois... </h2>
+    <form action="/turno" method="post" style="display:inline">
+        <button class="turno">PRÓXIMO TURNO</button>
+    </form>
+    <form action="/reset" method="post" style="display:inline">
+        <button class="reset">RESETAR</button>
+    </form>
+    
+    <table>
+        <tr><th>Nome</th><th>Classe</th><th>HP</th><th>Status</th></tr>
+        {% for id,nome,classe,hp_atual,hp_max,status in herois %}
+        {% set pct = (hp_atual/hp_max*100)|int if hp_max>0 else 0 %}
+        <tr {% if status=='CAÍDO' %}class="caido"{% endif %}>
+            <td><b>{{nome}}</b></td>
+            <td>{{classe}}</td>
+            <td>{{hp_atual}}/{{hp_max}} 
+                <div class="barra"><div class="fill" style="width:{{pct}}%;background:{{'#4caf50' if pct>50 else '#f1c40f' if pct>20 else '#ff4b4b'}}"></div></div>
+            </td>
+            <td><b>{{status}}</b></td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
+"""
 
-def get_db_connection():
-    return oracledb.connect(
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        dsn=os.getenv("DB_DSN")
-    )
+def get_db():
+    return oracledb.connect(user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"), dsn=os.getenv("DB_DSN"))
 
-
-def processar_turno():
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-   
-                plsql = """
-                DECLARE
-                    v_dano_nevoa NUMBER := 20;
-                BEGIN
-                    FOR heroi IN (SELECT id_heroi, hp_atual FROM TB_HEROIS WHERE status = 'ATIVO') LOOP
-                        IF (heroi.hp_atual - v_dano_nevoa) <= 0 THEN
-                            UPDATE TB_HEROIS 
-                            SET hp_atual = 0, status = 'CAÍDO' 
-                            WHERE id_heroi = heroi.id_heroi;
-                        ELSE
-                            UPDATE TB_HEROIS 
-                            SET hp_atual = hp_atual - v_dano_nevoa 
-                            WHERE id_heroi = heroi.id_heroi;
-                        END IF;
-                    END LOOP;
-                    COMMIT;
-                END;
-                """
-                cur.execute(plsql)
-                st.toast("A névoa venenosa drenou a vida dos heróis!", icon="🌫️")
-    except Exception as e:
-        st.error(f"Erro ao processar turno no banco: {e}")
-
-
-st.title("SQLgard - RPG Engine")
-st.subheader("O Despertar do Kernel Ancestral")
-st.markdown("*Uma nevoa venenosa drena a vida de todos os herois...*")
-
-if st.button("Proximo Turno", type="primary"):
-    processar_turno()
-
-with st.sidebar:
-    st.header("Painel do Mestre")
-    if st.button("Resetar Vida (Cura Total)"):
-        try:
-            with get_db_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("UPDATE TB_HEROIS SET hp_atual = hp_max, status = 'ATIVO'")
-                    conn.commit()
-                    st.success("os heróis foram curados!")
-                    st.rerun()
-        except Exception as e:
-            st.error(f"Erro ao resetar: {e}")
-
-
-try:
-    with get_db_connection() as conn:
+@app.route('/')
+def index():
+    with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id_heroi, nome, classe, hp_atual, hp_max, status FROM TB_HEROIS ORDER BY id_heroi")
-            herois = cur.fetchall()
+            cur.execute("SELECT * FROM TB_HEROIS ORDER BY id_heroi")
+            return render_template_string(HTML_TEMPLATE, herois=cur.fetchall())
 
-            html_tabela = """
-            <style>
-                table { width: 100%; border-collapse: collapse; font-family: sans-serif; color: white; }
-                th { text-align: left; border-bottom: 2px solid #555; padding: 10px; color: #ccc; }
-                td { padding: 12px; border-bottom: 1px solid #333; }
-                .hp-bg { background: #444; width: 100px; height: 10px; border-radius: 5px; }
-                .hp-fill { height: 100%; border-radius: 5px; transition: width 0.4s ease; }
-                .status-caido { background-color: rgba(217, 67, 78, 0.15); color: #ff4b4b; font-weight: bold; }
-            </style>
-            <table>
-                <tr>
-                    <th>ID</th><th>Nome</th><th>Classe</th><th>HP</th><th>Barra HP</th><th>Status</th>
-                </tr>
-            """ 
-            for h in herois:
-                pct = (h[3]/h[4]) * 100
-                cor_barra = "#4caf50" if pct > 50 else "#ffeb3b" if pct > 20 else "#f44336"
+@app.route('/turno', methods=['POST'])
+def turno():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE TB_HEROIS SET hp_atual = GREATEST(0, hp_atual-20), status = CASE WHEN hp_atual-20 <= 0 THEN 'CAÍDO' ELSE status END WHERE status='ATIVO'")
+            conn.commit()
+    return redirect(url_for('index'))
 
-                estilo_linha = "class='status-caido'" if h[5] == 'CAÍDO' else ""
-
-                html_tabela += f"""
-                <tr {estilo_linha}>
-                    <td>{h[0]}</td>
-                    <td>{h[1]}</td>
-                    <td>{h[2]}</td>
-                    <td>{h[3]}/{h[4]}</td>
-                    <td>
-                        <div class="hp-bg">
-                            <div class="hp-fill" style="width: {pct}%; background: {cor_barra};"></div>
-                        </div>
-                    </td>
-                    <td>{h[5]}</td>
-                </tr>
-                """
-            
-            html_tabela += "</table>"
-            
-            # Renderiza o HTML final
-            components.html(html_tabela, height=400)
-
-except Exception as e:
-    st.info("Aguardando conexão ou inicialização do banco de dados...")
+@app.route('/reset', methods=['POST'])
+def reset():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE TB_HEROIS SET hp_atual = hp_max, status = 'ATIVO'")
+            conn.commit()
+    return redirect(url_for('index'))
 
 if __name__ == "__main__":
-    import os
-    import sys
-    from streamlit.web.cli import main
-    sys.argv = ["streamlit", "run", "api/index.py", "--server.port", "8080", "--server.address", "0.0.0.0"]
-    main()
+    app.run(debug=True)
